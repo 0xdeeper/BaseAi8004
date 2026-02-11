@@ -17,21 +17,19 @@ setDefaultResultOrder("ipv4first");
  * - tasks/cancel   → Cancel a running task
  */
 
-import 'dotenv/config';
-import express, { Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { streamResponse, type AgentMessage } from './agent.js';
-import { paymentMiddleware, x402ResourceServer } from '@x402/express';
-import { HTTPFacilitatorClient } from '@x402/core/server';
-import { ExactEvmScheme } from '@x402/evm/exact/server';
+import "dotenv/config";
+import express, { Request, Response } from "express";
+import { v4 as uuidv4 } from "uuid";
+import { streamResponse, type AgentMessage } from "./agent.js";
 
 const app = express();
 app.use(express.json());
 
-// ✅ ROOT ROUTE
+// ROOT ROUTE
 app.get("/", (_req, res) => {
   res.send("🤖 A2A Agent is running");
 });
+
 
 // ============================================================================
 // In-Memory Storage
@@ -65,38 +63,6 @@ const conversationHistory = new Map<string, AgentMessage[]>();
 const PAYEE_ADDRESS = process.env.X402_PAYEE_ADDRESS || '0xF1c1fF26687d309e4ABFfBe3771C4C6262528bE9';
 const X402_NETWORK = 'eip155:8453'; // CAIP-2 EVM network
 
-// Create facilitator client
-const facilitatorClient = new HTTPFacilitatorClient({
-  url: 'https://facilitator.payai.network',
-});
-
-// Create scheme (using SDK default USDC address)
-const evmScheme = new ExactEvmScheme();
-
-// Register EVM scheme for payment verification
-const x402Server = new x402ResourceServer(facilitatorClient)
-  .register(X402_NETWORK, evmScheme);
-
-app.use(
-  paymentMiddleware(
-  {
-    'POST /a2a': {
-        accepts: [
-          {
-            scheme: 'exact',
-      price: process.env.X402_PRICE || '$0.001',
-            network: X402_NETWORK,
-            payTo: PAYEE_ADDRESS,
-          },
-        ],
-        description: 'test agent created with create-8004-agent',
-        mimeType: 'application/json',
-    },
-  },
-    x402Server,
-  ),
-);
-
 /**
  * Agent Card endpoint - required for A2A discovery
  * Other agents use this to learn about your agent's capabilities
@@ -110,25 +76,58 @@ app.get('/.well-known/agent-card.json', async (_req: Request, res: Response) => 
  * Main JSON-RPC 2.0 endpoint
  * All A2A protocol methods are called through this single endpoint
  */
-app.post('/a2a', async (req: Request, res: Response) => {
-  const { jsonrpc, method, params, id } = req.body;
+app.post("/a2a", async (req: Request, res: Response) => {
+  const { jsonrpc, id, method, params } = req.body;
 
-  // Validate JSON-RPC version
-  if (jsonrpc !== '2.0') {
-    return res.json({ jsonrpc: '2.0', error: { code: -32600, message: 'Invalid Request' }, id });
+  if (jsonrpc !== "2.0") {
+    return res.json({
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32600, message: "Invalid JSON-RPC version" },
+    });
+  }
+
+  if (method !== "message/send") {
+    return res.json({
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32601, message: "Method not found" },
+    });
+  }
+
+  if (!params?.message || typeof params.message !== "string") {
+    return res.json({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32602,
+        message: "Missing 'message' in params",
+      },
+    });
   }
 
   try {
-    const result = await handleMethod(method, params, res);
-    // If result is null, response was already sent (streaming)
-    if (result !== null) {
-      res.json({ jsonrpc: '2.0', result, id });
+    let output = "";
+
+    for await (const chunk of streamResponse(params.message)) {
+      output += chunk;
     }
-  } catch (error: any) {
-    res.json({
-      jsonrpc: '2.0',
-      error: { code: -32603, message: error.message || 'Internal error' },
+
+    return res.json({
+      jsonrpc: "2.0",
       id,
+      result: {
+        message: output,
+      },
+    });
+  } catch (err: any) {
+    return res.json({
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: -32000,
+        message: err.message ?? "Internal error",
+      },
     });
   }
 });
@@ -138,7 +137,7 @@ app.post('/a2a', async (req: Request, res: Response) => {
 // ============================================================================
 
 /**
- * Route JSON-RPC methods to their handlers
+ * 
  * Add new methods here as needed
  */
 async function handleMethod(method: string, params: any, res?: express.Response) {

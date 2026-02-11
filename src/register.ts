@@ -104,7 +104,12 @@ async function main() {
   console.log('');
   console.log('🔐 Setting agent wallet via setAgentWallet()...');
   const walletTx = await agent.setWallet('0xF1c1fF26687d309e4ABFfBe3771C4C6262528bE9');
-  await walletTx.waitMined();
+  if (!walletTx) {
+  throw new Error("walletTx is undefined");
+}
+
+await walletTx.waitMined();
+
 
   // Output results
   console.log('');
