@@ -1,12 +1,14 @@
+import "dotenv/config";
+
 import { setDefaultResultOrder } from "dns";
 setDefaultResultOrder("ipv4first");
 
-import "dotenv/config";
 import express, { Request, Response } from "express";
 import { generateResponse } from "./agent.js";
 
 const app = express();
 app.use(express.json());
+
 
 // ============================================================================
 // ROOT ROUTE
