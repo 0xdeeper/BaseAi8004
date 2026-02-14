@@ -1,95 +1,75 @@
+/* ======================================================
+   ENV SETUP
+====================================================== */
 import "dotenv/config";
-import OpenAI from "openai";
 import fetch from "node-fetch";
+import OpenAI from "openai";
 
-export interface AgentMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+/* ======================================================
+   PUBLIC API (USED BY A2A SERVER)
+====console.log("OLLAMA_BASE_URL =", process.env.OLLAMA_BASE_URL);
+================================================== */
+export async function generateResponse(message: string): Promise<string> {
+  const provider = process.env.LLM_PROVIDER || "ollama";
+  console.log("OLLAMA_BASE_URL =", process.env.OLLAMA_BASE_URL);
+  if (provider === "ollama") {
+    return ollamaResponse(message);
+  }
+
+  if (provider === "openai") {
+    return openAIResponse(message);
+  }
+
+  throw new Error(`Unknown LLM_PROVIDER: ${provider}`);
 }
 
-const PROVIDER = process.env.LLM_PROVIDER || "openai";
+/* ======================================================
+   OLLAMA CLIENT (LOCAL / FREE)
+====================================================== */
 
-/* -------------------- OPENAI CLIENT -------------------- */
+async function ollamaResponse(message: string): Promise<string> {
+  const baseUrl = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
 
-let openai: OpenAI | null = null;
+  const res = await fetch(`${baseUrl}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "mistral:latest",
+      prompt: message,
+      stream: false,
+      options: {
+        num_ctx: 512,
+        num_predict: 64,
+        num_threads: 1
+      }
+    }),
+  });
 
-if (PROVIDER === "openai") {
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ollama error: ${err}`);
+  }
+
+  const json: any = await res.json();
+  return json.response ?? "";
+}
+
+/* ======================================================
+   OPENAI CLIENT (FUTURE / PAID)
+====================================================== */
+async function openAIResponse(message: string): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY missing");
   }
 
-  openai = new OpenAI({
+  const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
-}
 
-/* -------------------- CHAT -------------------- */
+  const completion = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: message }],
+  });
 
-export async function chat(messages: AgentMessage[]): Promise<string> {
-  // ===== OPENAI =====
-  if (PROVIDER === "openai") {
-    if (!openai) throw new Error("OpenAI not initialized");
-
-    const res = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages,
-    });
-
-    return res.choices?.[0]?.message?.content ?? "";
-  }
-
-  // ===== COMMONSTACK (CORRECT) =====
-  if (PROVIDER === "commonstack") {
-    if (!process.env.COMMONSTACK_API_KEY) {
-      throw new Error("COMMONSTACK_API_KEY missing");
-    }
-
-    // Convert chat → prompt
-    const prompt = messages
-      .map(m => `${m.role.toUpperCase()}: ${m.content}`)
-      .join("\n");
-
-    const res = await fetch("https://api.commonstack.ai/v1/complete", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.COMMONSTACK_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        prompt,
-        max_tokens: 300,
-      }),
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      console.error("Commonstack error body:", text);
-      throw new Error(`Commonstack ${res.status}`);
-    }
-
-    const json = JSON.parse(text);
-    return json.output_text ?? "";
-  }
-
-  throw new Error(`Unsupported LLM_PROVIDER: ${PROVIDER}`);
-}
-
-/* -------------------- GENERATE RESPONSE -------------------- */
-
-export async function generateResponse(
-  userMessage: string,
-  history: AgentMessage[] = []
-): Promise<string> {
-  const system: AgentMessage = {
-    role: "system",
-    content: "You are a helpful AI assistant registered on ERC-8004.",
-  };
-
-  return chat([
-    system,
-    ...history,
-    { role: "user", content: userMessage },
-  ]);
+  return completion.choices[0]?.message?.content ?? "";
 }
