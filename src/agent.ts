@@ -5,24 +5,16 @@ import "dotenv/config";
 import fetch from "node-fetch";
 import OpenAI from "openai";
 
+// Import runtime functions
+import { getHistory, appendMessage } from "./memory.js";
+
+// Import type-only
+import type { ChatMessage } from "./memory.js";
+
 /* ======================================================
-   PUBLIC API (USED BY A2A SERVER)
+   TYPES
 ====================================================== */
-export async function generateResponse(message: string): Promise<string> {
-  const provider = process.env.LLM_PROVIDER || "ollama";
-
-  console.log("OLLAMA_BASE_URL =", process.env.OLLAMA_BASE_URL);
-
-  if (provider === "ollama") {
-    return ollamaResponse(message);
-  }
-
-  if (provider === "openai") {
-    return openAIResponse(message);
-  }
-
-  throw new Error(`Unknown LLM_PROVIDER: ${provider}`);
-}
+export type LLMProvider = "ollama" | "openai";
 
 /* ======================================================
    OLLAMA CLIENT (LOCAL / FREE)
@@ -72,4 +64,55 @@ async function openAIResponse(message: string): Promise<string> {
   });
 
   return completion.choices[0]?.message?.content ?? "";
+}
+
+/* ======================================================
+   CORE PUBLIC API (AUTO-FALLBACK)
+====================================================== */
+export async function generateResponse(message: string): Promise<string> {
+  const provider: string = process.env.LLM_PROVIDER || "auto";
+
+  console.log("LLM_PROVIDER =", provider);
+  console.log("OLLAMA_BASE_URL =", process.env.OLLAMA_BASE_URL);
+
+  if (provider === "auto") {
+    try {
+      return await ollamaResponse(message);
+    } catch (err) {
+      console.warn("Ollama failed. Falling back to OpenAI...");
+      return await openAIResponse(message);
+    }
+  }
+
+  if (provider === "ollama") return await ollamaResponse(message);
+  if (provider === "openai") return await openAIResponse(message);
+
+  throw new Error(`Unknown LLM_PROVIDER: ${provider}`);
+}
+
+/* ======================================================
+   MEMORY-AWARE WRAPPER
+====================================================== */
+export async function generateResponseWithMemory(
+  sessionId: string,
+  userMessage: string
+): Promise<string> {
+  // Fetch conversation history
+  const history: ChatMessage[] = getHistory(sessionId);
+
+  // Append user message to memory
+  appendMessage(sessionId, { role: "user", content: userMessage });
+
+  // Combine history into a single prompt for the model
+  const fullPrompt: string =
+    history.map((m: ChatMessage) => `${m.role.toUpperCase()}: ${m.content}`).join("\n") +
+    `\nUSER: ${userMessage}`;
+
+  // Call core generateResponse (auto-fallback)
+  const response: string = await generateResponse(fullPrompt);
+
+  // Save assistant reply to memory
+  appendMessage(sessionId, { role: "assistant", content: response });
+
+  return response;
 }
