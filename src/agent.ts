@@ -7,11 +7,12 @@ import OpenAI from "openai";
 
 /* ======================================================
    PUBLIC API (USED BY A2A SERVER)
-====console.log("OLLAMA_BASE_URL =", process.env.OLLAMA_BASE_URL);
-================================================== */
+====================================================== */
 export async function generateResponse(message: string): Promise<string> {
   const provider = process.env.LLM_PROVIDER || "ollama";
+
   console.log("OLLAMA_BASE_URL =", process.env.OLLAMA_BASE_URL);
+
   if (provider === "ollama") {
     return ollamaResponse(message);
   }
@@ -26,7 +27,6 @@ export async function generateResponse(message: string): Promise<string> {
 /* ======================================================
    OLLAMA CLIENT (LOCAL / FREE)
 ====================================================== */
-
 async function ollamaResponse(message: string): Promise<string> {
   const baseUrl = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
 
@@ -34,7 +34,7 @@ async function ollamaResponse(message: string): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "mistral:latest",
+      model: "phi3:mini",
       prompt: message,
       stream: false,
       options: {
