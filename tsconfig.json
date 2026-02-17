@@ -1,20 +1,19 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true
+    "strict": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "resolveJsonModule": true,
+    "typeRoots": ["./node_modules/@types"]
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["./scripts", "./test", "./hardhat.config.ts", "./src"],
+  "exclude": ["node_modules"]
 }
