@@ -4,3 +4,8 @@ dist/
 *.log
 .env
 dist
+
+# Hardhat build artifacts
+artifacts/
+cache/
+typechain-types/
