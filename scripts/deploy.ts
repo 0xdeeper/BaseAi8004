@@ -1,24 +1,12 @@
-import hardhat from "hardhat";
-const { ethers } = hardhat;
+import { ethers } from "hardhat";
 
 async function main() {
-  console.log("Deploying AgentRegistry...");
+  const Factory = await ethers.getContractFactory("AgentRegistry");
+  const contract = await Factory.deploy("BaseAI Agent");
 
-  const AgentRegistry = await ethers.getContractFactory("AgentRegistry");
-  const agent = await AgentRegistry.deploy("AgentX", "Initial memory data");
+  await contract.waitForDeployment();
 
-  // ethers v6: no .deployed() needed
-  console.log("✅ AgentRegistry deployed at:", agent.target);
-
-  console.log("Deploying Hello...");
-
-  const Hello = await ethers.getContractFactory("Hello");
-  const hello = await Hello.deploy();
-
-  console.log("✅ Hello deployed at:", hello.target);
+  console.log("Deployed to:", await contract.getAddress());
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main();

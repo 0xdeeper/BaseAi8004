@@ -4,19 +4,17 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const BASE_RPC_URL = process.env.BASE_RPC_URL;
+
 const config: HardhatUserConfig = {
   solidity: "0.8.20",
   networks: {
     baseSepolia: {
-      url: process.env.BASE_SEPOLIA_URL, // Your Base Sepolia RPC
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
-    }
+      url: BASE_RPC_URL || "",
+      accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
+    },
   },
-  typechain: {
-    outDir: "typechain-types",
-    target: "ethers-v6"
-  }
 };
 
 export default config;
-
