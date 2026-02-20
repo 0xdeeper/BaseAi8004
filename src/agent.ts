@@ -97,22 +97,24 @@ export async function generateResponseWithMemory(
   sessionId: string,
   userMessage: string
 ): Promise<string> {
-  // Fetch conversation history
-  const history: ChatMessage[] = getHistory(sessionId);
 
-  // Append user message to memory
+  // 1️⃣ Save user message
   appendMessage(sessionId, { role: "user", content: userMessage });
 
-  // Combine history into a single prompt for the model
-  const fullPrompt: string =
-    history.map((m: ChatMessage) => `${m.role.toUpperCase()}: ${m.content}`).join("\n") +
-    `\nUSER: ${userMessage}`;
+  // 2️⃣ Get updated history
+  const history: ChatMessage[] = getHistory(sessionId);
 
-  // Call core generateResponse (auto-fallback)
+  // 3️⃣ Build prompt
+  const fullPrompt: string = history
+    .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+    .join("\n");
+
+  // 4️⃣ Generate response
   const response: string = await generateResponse(fullPrompt);
 
-  // Save assistant reply to memory
+  // 5️⃣ Save assistant reply
   appendMessage(sessionId, { role: "assistant", content: response });
 
   return response;
 }
+

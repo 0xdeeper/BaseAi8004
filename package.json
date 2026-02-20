@@ -1,45 +1,5 @@
 {
-  "name": "baseai8004",
-  "version": "0.1.0",
-  "description": "ERC-8004 A2A agent with local Ollama and optional OpenAI",
-  "private": true,
-  "engines": {
-    "node": ">=18"
-  },
-  "scripts": {
-    "clean": "rm -rf dist artifacts cache typechain-types",
-    "build": "tsc",
-    "dev:a2a": "tsx src/a2a-server.ts",
-    "dev:mcp": "tsx src/mcp-server.ts",
-    "start": "node dist/a2a-server.js",
-    "a2a:discover": "tsx src/a2a-client.ts --discover",
-    "a2a:chat": "tsx src/a2a-client.ts --interactive",
-    "a2a:test": "tsx src/a2a-client.ts --test",
-    "compile": "npx hardhat compile",
-    "deploy:baseSepolia": "npx hardhat run scripts/deploy.ts --network baseSepolia"
-  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "@x402/core": "^2.0.0",
-    "@x402/evm": "^2.3.0",
-    "@x402/express": "^2.0.0",
-    "agent0-sdk": "latest",
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "express": "^4.18.2",
-    "openai": "^4.68.0",
-    "uuid": "^9.0.0"
-  },
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.19.33",
-    "@types/uuid": "^9.0.7",
-    "hardhat": "^2.28.6",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.7.0",
-    "typescript": "^5.9.3"
-  },
-  "license": "MIT"
+    "cors": "^2.8.6"
+  }
 }
-

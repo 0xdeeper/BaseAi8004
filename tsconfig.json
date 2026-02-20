@@ -1,19 +1,14 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "Node",
-    "esModuleInterop": true,
+    "target": "ES2020",           // or ES2017/ES2015 minimum
+    "module": "commonjs",
+    "outDir": "./server",
+    "rootDir": "./src",
     "strict": true,
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] },
-    "allowJs": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "dist",
-    "rootDir": ".",
-    "resolveJsonModule": true,
-    "typeRoots": ["./node_modules/@types"]
+    "esModuleInterop": true,      // important for default import like express
+    "resolveJsonModule": true,    // important for importing JSON
+    "moduleResolution": "node",
+    "skipLibCheck": true          // skips type errors in node_modules
   },
-  "include": ["./scripts", "./test", "./hardhat.config.ts", "./src"],
-  "exclude": ["node_modules"]
+  "include": ["src"]
 }

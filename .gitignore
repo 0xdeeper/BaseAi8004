@@ -9,3 +9,4 @@ dist
 artifacts/
 cache/
 typechain-types/
+.vscode/
