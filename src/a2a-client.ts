@@ -99,7 +99,7 @@ class A2AClient {
     if (!response.ok) {
       throw new Error(`Failed to fetch agent card: ${response.status}`);
     }
-    return response.json();
+    return (await response.json()) as AgentCard;
   }
 
   /**
@@ -146,7 +146,7 @@ class A2AClient {
       throw new PaymentRequiredError(paymentInfo);
     }
 
-    const result: JsonRpcResponse = await response.json();
+    const result = (await response.json()) as JsonRpcResponse;
     log('Received response', result);
 
     if (result.error) {

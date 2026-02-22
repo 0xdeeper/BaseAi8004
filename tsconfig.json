@@ -1,14 +1,28 @@
 {
   "compilerOptions": {
-    "target": "ES2020",           // or ES2017/ES2015 minimum
-    "module": "commonjs",
-    "outDir": "./server",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+
+    "module": "Node16",
+    "moduleResolution": "Node16",
+
     "rootDir": "./src",
+    "outDir": "./server",
+
     "strict": true,
-    "esModuleInterop": true,      // important for default import like express
-    "resolveJsonModule": true,    // important for importing JSON
-    "moduleResolution": "node",
-    "skipLibCheck": true          // skips type errors in node_modules
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+
+    "types": ["node"],
+    "ignoreDeprecations": "5.0"
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "clean-chain",
+    "blockchain",
+    "agent-server",
+    "client"
+  ]
 }

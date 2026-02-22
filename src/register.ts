@@ -15,8 +15,8 @@
  * Run with: npm run register
  */
 
-import 'dotenv/config';
-import { SDK } from 'agent0-sdk';
+import "dotenv/config";
+import { SDK } from "agent0-sdk";
 
 // ============================================================================
 // Agent Configuration

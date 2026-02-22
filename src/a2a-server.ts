@@ -1,37 +1,46 @@
 import "dotenv/config";
-
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { setDefaultResultOrder } from "dns";
 setDefaultResultOrder("ipv4first");
 
 import express, { Request, Response } from "express";
-import { generateResponse } from './agent.js';
+import { generateResponse } from "./agent.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
 
+// Serve static files from /public (so /chat.html works)
+app.use(express.static(path.join(__dirname, "../public")));
 
 // ============================================================================
 // ROOT ROUTE
 // ============================================================================
-app.get("/", (_req, res) => {
-  res.send("🤖 A2A Agent is running");
+app.get("/a2a", (_req, res) => {
+  res.status(405).send("This endpoint accepts POST JSON-RPC only.");
 });
-
 // ============================================================================
 // AGENT CARD (A2A DISCOVERY)
 // ============================================================================
-app.get("/.well-known/agent-card.json", async (_req: Request, res: Response) => {
-  const agentCard = await import("../.well-known/agent-card.json", {
-    assert: { type: "json" },
-  });
-  res.json(agentCard.default);
-});
 
+app.get("/.well-known/agent-card.json", (_req: Request, res: Response) => {
+  try {
+    const p = path.join(__dirname, "../.well-known/agent-card.json");
+    const raw = fs.readFileSync(p, "utf8");
+    res.type("application/json").send(raw);
+  } catch {
+    res.status(500).json({ error: "Failed to load agent-card.json" });
+  }
+});
 // ============================================================================
 // A2A JSON-RPC ENDPOINT
 // ============================================================================
 app.post("/a2a", async (req: Request, res: Response) => {
-  const { jsonrpc, id, method, params } = req.body;
+  const { jsonrpc, id, method, params } = req.body ?? {};
 
   // Validate JSON-RPC
   if (jsonrpc !== "2.0") {
@@ -69,18 +78,14 @@ app.post("/a2a", async (req: Request, res: Response) => {
     return res.json({
       jsonrpc: "2.0",
       id,
-      result: {
-        message: reply,
-      },
+      result: { message: reply },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Internal server error";
     return res.json({
       jsonrpc: "2.0",
       id,
-      error: {
-        code: -32000,
-        message: err?.message || "Internal server error",
-      },
+      error: { code: -32000, message },
     });
   }
 });

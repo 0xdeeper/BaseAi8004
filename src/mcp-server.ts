@@ -56,7 +56,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
  * Handle tool calls
  * When a client wants to use a tool, this handler routes to the right function
  */
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   
   try {

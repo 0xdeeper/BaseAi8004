@@ -1,5 +1,27 @@
 {
+  "name": "base-deepmind-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+  "build": "npx tsc",
+  "dev": "npx tsc -w",
+  "start": "node server/a2a-server.js",
+  "start:build": "npm run build && npm run start",
+  "typecheck": "npx tsc --noEmit"
+  },
   "dependencies": {
-    "cors": "^2.8.6"
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "agent0-sdk": "^1.5.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "node-fetch": "^3.3.2",
+    "openai": "^6.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.0",
+    "typescript": "^5.9.3"
   }
 }

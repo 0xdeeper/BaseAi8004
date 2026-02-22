@@ -1,12 +1,25 @@
+# Dependencies
 node_modules/
-dist/
-.env
-*.log
-.env
-dist
 
-# Hardhat build artifacts
+# Build output
+server/
+dist/
+
+# Hardhat artifacts
 artifacts/
 cache/
 typechain-types/
+
+# Environment variables
+.env
+
+# Editor / OS
 .vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Archives
+archive/
