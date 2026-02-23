@@ -23,3 +23,7 @@ Thumbs.db
 
 # Archives
 archive/
+
+#Personal Audit Report
+SECURITY_AUDIT.md
+SECURITY_AUDIT.pdf
