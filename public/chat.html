@@ -2,97 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Local AI Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Local A2A Chat</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; max-width: 900px; }
-    textarea { width: 100%; }
-    input { width: 80%; padding: 8px; }
-    button { padding: 8px 14px; }
-    .row { display: flex; gap: 10px; align-items: center; }
+    #output { width: 100%; height: 420px; }
+    #row { display: flex; gap: 10px; margin-top: 10px; }
+    #input { flex: 1; padding: 10px; }
+    #sendBtn { padding: 10px 14px; }
+    .hint { color: #666; font-size: 12px; margin-top: 8px; }
   </style>
 </head>
 <body>
 
-<h2>AI Chat (Local)</h2>
+<h2>AI Chat (A2A JSON-RPC)</h2>
 
-<textarea id="output" rows="22" readonly></textarea><br><br>
+<textarea id="output" readonly></textarea>
 
-<div class="row">
-  <input type="text" id="input" placeholder="Type your message…" />
+<div id="row">
+  <input id="input" type="text" placeholder="Type a message… (Enter to send)">
   <button id="sendBtn">Send</button>
 </div>
 
-<script>
-  const output = document.getElementById("output");
-  const inputField = document.getElementById("input");
-  const sendBtn = document.getElementById("sendBtn");
+<div class="hint">
+  Endpoint: <code>POST /a2a</code> · CSP blocks inline scripts, so JS is loaded from <code>/chat.js</code>.
+</div>
 
-  function append(line) {
-    output.value += line + "\n";
-    output.scrollTop = output.scrollHeight;
-  }
-
-  async function sendMessage() {
-    const msg = inputField.value.trim();
-    if (!msg) return;
-
-    append("You: " + msg);
-
-    const payload = {
-      jsonrpc: "2.0",
-      id: Date.now(),
-      method: "message/send",
-      params: { message: msg }
-    };
-
-    try {
-      const resp = await fetch("/a2a", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      const raw = await resp.text();
-      let data = null;
-      try { data = JSON.parse(raw); } catch {}
-
-      if (!resp.ok) {
-        append("Error: HTTP " + resp.status + " " + raw);
-        append("");
-        return;
-      }
-      if (data && data.error) {
-        append("Error: " + (data.error.message || JSON.stringify(data.error)));
-        append("");
-        return;
-      }
-
-      const reply =
-        data?.result?.message ??
-        JSON.stringify(data?.result ?? data, null, 2);
-
-      append("AI: " + reply);
-      append("");
-    } catch (e) {
-      append("Connection error: " + (e?.message || String(e)));
-      append("");
-    }
-
-    inputField.value = "";
-    inputField.focus();
-  }
-
-  sendBtn.addEventListener("click", sendMessage);
-  inputField.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
-
-  // quick sanity line
-  append("Ready. Type a message and press Enter.");
-</script>
-
+<script src="/chat.js"></script>
 </body>
 </html>

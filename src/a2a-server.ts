@@ -157,6 +157,9 @@ app.get("/.well-known/agent-card.json", (_req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to load agent-card.json" });
   }
 });
+app.get("/chat", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../public/chat.html"));
+});
 
 // IMPORTANT: lightweight URL blocking BEFORE handler (only for string messages)
 app.post("/a2a", (req: Request, res: Response, next: NextFunction) => {
