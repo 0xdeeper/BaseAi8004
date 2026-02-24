@@ -71,21 +71,21 @@ export function getHistory(sessionId: string): ChatMessage[] {
   const state = sessions.get(sessionId);
   if (!state) return [];
 
-  // Return a defensive copy so callers can’t mutate internal state
-  return state.history.map(m => ({ role: m.role, content: m.content }));
+  // Defensive copy so callers can’t mutate internal state
+  return state.history.map((m) => ({ role: m.role, content: m.content }));
 }
 
-export function appendMessage(
-  sessionId: string,
-  message: ChatMessage,
-  opts?: { allowSystem?: boolean }
-) {
+type AppendOptions = {
+  // Default: system messages are blocked (prevents privilege escalation).
+  allowSystem?: boolean;
+};
+
+export function appendMessage(sessionId: string, message: ChatMessage, opts?: AppendOptions) {
   assertSessionId(sessionId);
   assertMessage(message);
   ensureCapacity();
 
   // Lock down "system" writes by default.
-  // Only allow your own trusted code paths to set system messages.
   if (message.role === "system" && !opts?.allowSystem) {
     throw new Error("System messages are not allowed");
   }
@@ -94,6 +94,7 @@ export function appendMessage(
   const state = sessions.get(sessionId) ?? { history: [], updatedAt: t };
 
   state.history.push({ role: message.role, content: message.content.trim() });
+
   if (state.history.length > MAX_MESSAGES_PER_SESSION) {
     // Drop oldest messages, keep newest
     state.history.splice(0, state.history.length - MAX_MESSAGES_PER_SESSION);

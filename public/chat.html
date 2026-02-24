@@ -1,60 +1,97 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Local AI Chat</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
+    body { font-family: Arial, sans-serif; margin: 20px; max-width: 900px; }
     textarea { width: 100%; }
-    input { width: 80%; padding: 5px; }
-    button { padding: 5px 10px; }
+    input { width: 80%; padding: 8px; }
+    button { padding: 8px 14px; }
+    .row { display: flex; gap: 10px; align-items: center; }
   </style>
 </head>
 <body>
 
-<h2>AI Chat (phi3:mini)</h2>
+<h2>AI Chat (Local)</h2>
 
-<textarea id="output" rows="20" readonly></textarea><br><br>
-<input type="text" id="input" placeholder="Type your message...">
-<button onclick="sendMessage()">Send</button>
+<textarea id="output" rows="22" readonly></textarea><br><br>
+
+<div class="row">
+  <input type="text" id="input" placeholder="Type your message…" />
+  <button id="sendBtn">Send</button>
+</div>
 
 <script>
-async function sendMessage() {
-  const inputField = document.getElementById("input");
   const output = document.getElementById("output");
-  const message = inputField.value.trim();
-  if (!message) return;
+  const inputField = document.getElementById("input");
+  const sendBtn = document.getElementById("sendBtn");
 
-  output.value += "You: " + message + "\n";
-
-  try {
-    const response = await fetch("/a2a", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: Date.now(),
-        method: "message/send",
-        params: { message }
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || data.error) {
-      const errMsg = data?.error?.message || (await response.text());
-      output.value += `Error: ${errMsg}\n\n`;
-      return;
-    }
-
-    output.value += "AI: " + (data.result?.message ?? "No response") + "\n\n";
-  } catch (err) {
-    output.value += "Connection error: " + err.message + "\n\n";
+  function append(line) {
+    output.value += line + "\n";
+    output.scrollTop = output.scrollHeight;
   }
 
-  inputField.value = "";
-  inputField.focus();
-}
+  async function sendMessage() {
+    const msg = inputField.value.trim();
+    if (!msg) return;
+
+    append("You: " + msg);
+
+    const payload = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "message/send",
+      params: { message: msg }
+    };
+
+    try {
+      const resp = await fetch("/a2a", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const raw = await resp.text();
+      let data = null;
+      try { data = JSON.parse(raw); } catch {}
+
+      if (!resp.ok) {
+        append("Error: HTTP " + resp.status + " " + raw);
+        append("");
+        return;
+      }
+      if (data && data.error) {
+        append("Error: " + (data.error.message || JSON.stringify(data.error)));
+        append("");
+        return;
+      }
+
+      const reply =
+        data?.result?.message ??
+        JSON.stringify(data?.result ?? data, null, 2);
+
+      append("AI: " + reply);
+      append("");
+    } catch (e) {
+      append("Connection error: " + (e?.message || String(e)));
+      append("");
+    }
+
+    inputField.value = "";
+    inputField.focus();
+  }
+
+  sendBtn.addEventListener("click", sendMessage);
+  inputField.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // quick sanity line
+  append("Ready. Type a message and press Enter.");
 </script>
 
 </body>

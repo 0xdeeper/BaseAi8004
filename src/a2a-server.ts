@@ -1,17 +1,17 @@
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { setDefaultResultOrder } from "dns";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { setDefaultResultOrder } from "node:dns";
 
-import express, { Request, Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { z } from "zod";
 
-import { generateResponse } from "./agent.js";
+import { handleA2A } from "./a2a-handler.js";
 
+// Prefer IPv4 first (Windows can be weird with localhost resolution)
 setDefaultResultOrder("ipv4first");
 
 // ---------------------------------------------------------------------------
@@ -26,15 +26,10 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_MODE = (process.env.PUBLIC_MODE || "false").toLowerCase() === "true";
 
-// Best-practice:
-// - Local: bind 127.0.0.1 only
-// - VPS behind Nginx: still bind 127.0.0.1 (Nginx is public)
-// - VPS direct: bind 0.0.0.0 (less ideal)
-const BIND_HOST =
-  process.env.BIND_HOST ||
-  (PUBLIC_MODE ? "127.0.0.1" : "127.0.0.1");
+// Bind host: keep localhost-only unless you explicitly expose it
+const BIND_HOST = (process.env.BIND_HOST || "127.0.0.1").trim();
 
-// Optional allowlist (useful on VPS during early phase)
+// Optional allowlist gate (useful on VPS during early phase)
 const allowlist = new Set(
   (process.env.A2A_IP_ALLOWLIST || "")
     .split(",")
@@ -42,15 +37,34 @@ const allowlist = new Set(
     .filter(Boolean)
 );
 
+// Optional: block URLs (defense-in-depth)
+const BLOCK_URLS = (process.env.BLOCK_URLS || "false").toLowerCase() === "true";
+const urlRegex = /(https?:\/\/[^\s]+)/i;
+
+function containsDangerousUrl(text: string): boolean {
+  const lowered = text.toLowerCase();
+  if (lowered.includes("file://") || lowered.includes("ftp://")) return true;
+  if (lowered.includes("127.0.0.1") || lowered.includes("localhost")) return true;
+  if (lowered.includes("169.254.") || lowered.includes("0.0.0.0")) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Express request meta typing
+// ---------------------------------------------------------------------------
+type RequestMeta = { rid: string; ip: string; ua: string };
+type RequestWithMeta = Request & { _meta?: RequestMeta };
+
+function getClientIp(req: Request): string {
+  const xf = (req.headers["x-forwarded-for"] || "")?.toString();
+  return (xf ? xf.split(",")[0].trim() : req.socket.remoteAddress) || "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 const app = express();
 app.disable("x-powered-by");
-
-// If you deploy behind a proxy (Nginx/Cloudflare), you may enable this later.
-// For local dev, leaving it false avoids trusting spoofed headers.
-// app.set("trust proxy", PUBLIC_MODE ? 1 : false);
 
 // Security headers
 app.use(helmet());
@@ -64,18 +78,12 @@ app.use(express.static(path.join(__dirname, "../public")));
 // ---------------------------------------------------------------------------
 // Logging (IP + UA + request id)
 // ---------------------------------------------------------------------------
-function getClientIp(req: Request): string {
-  // If you later enable trust proxy, this becomes reliable behind Nginx/CF.
-  const xf = req.headers["x-forwarded-for"]?.toString();
-  return (xf ? xf.split(",")[0].trim() : req.socket.remoteAddress) || "unknown";
-}
-
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   const rid = crypto.randomUUID();
   const ip = getClientIp(req);
-  const ua = req.headers["user-agent"] || "unknown";
+  const ua = (req.headers["user-agent"] || "unknown").toString();
 
-  (req as any)._meta = { rid, ip, ua };
+  (req as RequestWithMeta)._meta = { rid, ip, ua };
 
   const start = Date.now();
   res.on("finish", () => {
@@ -117,12 +125,11 @@ app.use(globalLimiter);
 app.use("/a2a", a2aLimiter);
 
 // ---------------------------------------------------------------------------
-// Temporary allowlist gate (recommended when PUBLIC_MODE=true early on)
+// Optional allowlist gate
 // If allowlist is empty -> allow all (useful for pure local dev).
 // ---------------------------------------------------------------------------
-app.use("/a2a", (req, res, next) => {
+app.use("/a2a", (req: Request, res: Response, next: NextFunction) => {
   if (allowlist.size === 0) return next();
-
   const ip = getClientIp(req);
   if (!allowlist.has(ip)) {
     return res.status(403).json({ error: "Forbidden" });
@@ -131,37 +138,13 @@ app.use("/a2a", (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
-// JSON-RPC validation (strict)
-// ---------------------------------------------------------------------------
-const JsonRpcSchema = z.object({
-  jsonrpc: z.literal("2.0"),
-  id: z.union([z.string(), z.number(), z.null()]).optional(),
-  method: z.literal("message/send"),
-  params: z.object({
-    message: z.string().min(1).max(2000),
-  }),
-});
-
-// Optional: block URLs for now (max safety for public exposure)
-// Turn on later by setting BLOCK_URLS=true
-const BLOCK_URLS = (process.env.BLOCK_URLS || "false").toLowerCase() === "true";
-const urlRegex = /(https?:\/\/[^\s]+)/i;
-function containsDangerousUrl(text: string): boolean {
-  const lowered = text.toLowerCase();
-  if (lowered.includes("file://") || lowered.includes("ftp://")) return true;
-  if (lowered.includes("127.0.0.1") || lowered.includes("localhost")) return true;
-  if (lowered.includes("169.254.") || lowered.includes("0.0.0.0")) return true;
-  return false;
-}
-
-// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 app.get("/", (_req: Request, res: Response) => {
   res.send("🤖 A2A Agent is running");
 });
 
-app.get("/a2a", (_req, res) => {
+app.get("/a2a", (_req: Request, res: Response) => {
   res.status(405).send("This endpoint accepts POST JSON-RPC only.");
 });
 
@@ -175,53 +158,41 @@ app.get("/.well-known/agent-card.json", (_req: Request, res: Response) => {
   }
 });
 
-app.post("/a2a", async (req: Request, res: Response) => {
-  const parsed = JsonRpcSchema.safeParse(req.body);
-
-  if (!parsed.success) {
-    const meta = (req as any)._meta || {};
-    console.warn(
-      JSON.stringify({ rid: meta.rid, ip: meta.ip, error: "Invalid JSON-RPC" })
-    );
-
-    return res.status(400).json({
-      jsonrpc: "2.0",
-      id: req.body?.id ?? null,
-      error: { code: -32600, message: "Invalid request" },
-    });
-  }
-
-  const { id, params } = parsed.data;
-  const message = params.message;
-
-  if (containsDangerousUrl(message)) {
-    return res.json({
-      jsonrpc: "2.0",
-      id,
-      result: { message: "Blocked: unsafe URL pattern." },
-    });
-  }
-
-  if (BLOCK_URLS && urlRegex.test(message)) {
-    return res.json({
-      jsonrpc: "2.0",
-      id,
-      result: { message: "For safety, links are disabled right now." },
-    });
-  }
-
+// IMPORTANT: lightweight URL blocking BEFORE handler (only for string messages)
+app.post("/a2a", (req: Request, res: Response, next: NextFunction) => {
   try {
-    const reply = await generateResponse(message);
-    return res.json({ jsonrpc: "2.0", id, result: { message: reply } });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Internal server error";
-    return res.status(500).json({
-      jsonrpc: "2.0",
-      id,
-      error: { code: -32000, message: msg },
-    });
+    const body = req.body as any;
+    const msg = body?.params?.message;
+
+    // Only apply these blocks to legacy string message format.
+    if (typeof msg === "string") {
+      if (containsDangerousUrl(msg)) {
+        const id = body?.id ?? null;
+        return res.status(200).json({
+          jsonrpc: "2.0",
+          id,
+          result: { message: "Blocked: unsafe URL pattern." },
+        });
+      }
+      if (BLOCK_URLS && urlRegex.test(msg)) {
+        const id = body?.id ?? null;
+        return res.status(200).json({
+          jsonrpc: "2.0",
+          id,
+          result: { message: "For safety, links are disabled right now." },
+        });
+      }
+    }
+
+    return next();
+  } catch {
+    // If anything is weird, just continue to handler which will validate/fail closed.
+    return next();
   }
 });
+
+// Use the new hardened handler (supports legacy chat + structured tool calls)
+app.post("/a2a", handleA2A);
 
 // ---------------------------------------------------------------------------
 // Start

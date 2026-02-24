@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_call",
+          "name": "get_my_usdc_balance",
+          "arguments": {}
+        }
+      ]
+    }
+  }
+}
