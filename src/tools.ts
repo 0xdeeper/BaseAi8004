@@ -10,13 +10,16 @@
  *
  * tools.ts must ONLY validate inputs and call the wallet module (or safe wrappers).
  */
-
+console.log("[tools] loaded:", import.meta.url);
+console.log("[tools] has wallet_prepare_tx:", true);
 import { generateResponse } from "./agent.js";
-import { sendNative, sendTx } from "./wallet/tx.js";
+import { prepareTx, sendTx } from "./wallet/tx.js";
 import { listRegistry } from "./wallet/registry.js";
 import { callRegisteredSelector } from "./wallet/selector-call.js";
 import { encodeErc20Approve, encodeErc20Transfer } from "./wallet/erc20.js";
 import { getNativeBalance, getErc20Balance } from "./wallet/balance.js";
+
+import { createPreparedTx, getPreparedTx, markUsed, digestIntent } from "./security/tx-confirmation.js";
 
 import type { Address, Hex } from "viem";
 
@@ -192,11 +195,43 @@ export const tools = [
     },
   },
 
-  // ---- wallet send ----
+  // ---- wallet two-phase commit ----
+  {
+    name: "wallet_prepare_tx",
+    description:
+      "Prepare a guarded transaction (preview + confirm token). Does NOT send. Requires WALLET_AUTONOMY_ENABLED=true.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        to: { type: "string", description: "Target address (contract or EOA)" },
+        valueWei: {
+          type: "string",
+          description: "Amount in wei (decimal integer string). Use '0' for most contract calls.",
+        },
+        dataHex: { type: "string", description: "Calldata hex (0x...); use '0x' for native send" },
+      },
+      required: ["to", "valueWei", "dataHex"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "wallet_confirm_tx",
+    description: "Confirm and send a previously prepared transaction using its one-time token.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        token: { type: "string", description: "Confirmation token from wallet_prepare_tx" },
+      },
+      required: ["token"],
+      additionalProperties: false,
+    },
+  },
+
+  // ---- wallet send (DISABLED; use prepare+confirm) ----
   {
     name: "wallet_send_native",
     description:
-      "Send native token (ETH) on Base Sepolia. Requires wei. Disabled unless WALLET_AUTONOMY_ENABLED=true.",
+      "DISABLED. Use wallet_prepare_tx then wallet_confirm_tx. (This tool remains listed for compatibility.)",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -210,7 +245,7 @@ export const tools = [
   {
     name: "wallet_send_tx",
     description:
-      "Send a guarded transaction (contract call or native transfer) on Base Sepolia. Disabled unless WALLET_AUTONOMY_ENABLED=true. Approvals may be blocked by policy.",
+      "DISABLED. Use wallet_prepare_tx then wallet_confirm_tx. (This tool remains listed for compatibility.)",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -288,6 +323,7 @@ export const tools = [
 // ============================================================================
 
 export async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
+  console.log("[handleToolCall] name =", JSON.stringify(name));
   assertPlainObject(args, "args");
 
   switch (name) {
@@ -338,23 +374,9 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       };
     }
 
-    // ---- wallet send ----
-    case "wallet_send_native": {
-      assertOnlyKeys(args, ["to", "valueWei"], "wallet_send_native args");
-
-      assertString(args.to, "to");
-      assertHexAddress(args.to, "to");
-
-      assertString(args.valueWei, "valueWei");
-      assertWeiString(args.valueWei, "valueWei");
-      const valueWei = parseWei(args.valueWei, "valueWei");
-
-      const { hash } = await sendNative(args.to, valueWei, DEFAULT_CHAIN_ID);
-      return { hash };
-    }
-
-    case "wallet_send_tx": {
-      assertOnlyKeys(args, ["to", "valueWei", "dataHex"], "wallet_send_tx args");
+    // ---- wallet two-phase commit ----
+    case "wallet_prepare_tx": {
+      assertOnlyKeys(args, ["to", "valueWei", "dataHex"], "wallet_prepare_tx args");
 
       assertString(args.to, "to");
       assertHexAddress(args.to, "to");
@@ -366,14 +388,63 @@ export async function handleToolCall(name: string, args: Record<string, unknown>
       assertString(args.dataHex, "dataHex");
       assertDataHex(args.dataHex, "dataHex");
 
-      const { hash } = await sendTx({
+      const prepared = await prepareTx({
         chainId: DEFAULT_CHAIN_ID,
         to: args.to,
         valueWei,
         dataHex: args.dataHex,
       });
 
+      const txPreview = {
+        chainId: prepared.intent.chainId,
+        from: prepared.intent.from,
+        to: prepared.intent.to,
+        valueWei: (prepared.intent.valueWei ?? 0n).toString(),
+        dataHex: prepared.intent.dataHex ?? "0x",
+        note: "Not sent. Call wallet_confirm_tx with the token to execute.",
+      };
+
+      const entry = createPreparedTx(prepared.intent, txPreview);
+
+      return {
+        token: entry.token,
+        expiresAt: entry.expiresAt,
+        digest: entry.digest,
+        preview: txPreview,
+      };
+    }
+
+    case "wallet_confirm_tx": {
+      assertOnlyKeys(args, ["token"], "wallet_confirm_tx args");
+
+      assertString(args.token, "token");
+      const token = args.token.trim();
+      if (!token) throw new Error("token must not be empty");
+
+      const entry = getPreparedTx(token);
+      if (!entry) throw new Error("Invalid or expired confirmation token");
+      if (entry.used) throw new Error("Confirmation token already used");
+
+      const d = digestIntent(entry.intent);
+      if (d !== entry.digest) throw new Error("Prepared tx digest mismatch");
+
+      // replay protection
+      markUsed(token);
+
+      const { hash } = await sendTx({
+        chainId: entry.intent.chainId,
+        to: entry.intent.to as Address,
+        valueWei: entry.intent.valueWei ?? 0n,
+        dataHex: (entry.intent.dataHex ?? "0x") as Hex,
+      });
+
       return { hash };
+    }
+
+    // ---- wallet send (DISABLED; use prepare+confirm) ----
+    case "wallet_send_native":
+    case "wallet_send_tx": {
+      throw new Error("Direct send is disabled. Use wallet_prepare_tx then wallet_confirm_tx (two-phase commit).");
     }
 
     // ---- registry ----

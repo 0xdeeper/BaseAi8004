@@ -87,7 +87,7 @@ export async function handleA2A(req: Request, res: Response) {
       return jsonRpcError(res, id, -32602, "Unsupported content type");
     }
 
-    const toolName = first.name;
+    const toolName = (first.name ?? "").trim();
     const toolArgs = first.arguments ?? {};
 
     if (!toolName) {

@@ -1,6 +1,6 @@
 import { createPublicClient, createWalletClient, http, type Hex, type Address, isAddress, isHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
+import { base, baseSepolia } from "viem/chains";
 import {
   loadWalletGuardConfigFromEnv,
   walletPreflightCheck,
@@ -47,13 +47,14 @@ function viemErr(e: unknown): string {
  *  Section: RPC + chain
  *  --------------------------*/
 function getRpcUrl(): string {
-  const url = (process.env.RPC_URL || "https://mainnet.base.org").trim();
+  const url = (process.env.RPC_URL || "https://sepolia.base.org").trim();
   return url;
 }
 
 function getChainById(chainId: number) {
-  if (chainId !== 8453) throw new Error(`Unsupported chainId in runtime: ${chainId}`);
-  return base;
+  if (chainId === 8453) return base;
+  if (chainId === 84532) return baseSepolia;
+  throw new Error(`Unsupported chainId in runtime: ${chainId}`);
 }
 
 function getAccountFromEnv() {
@@ -100,6 +101,57 @@ async function simulateTx(req: SendTxRequest, from: Address): Promise<Simulation
   }
 }
 
+/**
+ * Prepare transaction (guarded) — NO signing, NO sending.
+ * Runs the same guard + simulation but does NOT commit daily ledger.
+ */
+export async function prepareTx(req: SendTxRequest): Promise<{ intent: TxIntent }> {
+  // (1) Validate request first (fail fast)
+  assertSendTxRequest(req);
+
+  // (2) Load config and fail-closed BEFORE touching PRIVATE_KEY
+  const cfg = loadWalletGuardConfigFromEnv();
+
+  if (!cfg.autonomyEnabled) {
+    throw new Error("Wallet autonomy disabled (WALLET_AUTONOMY_ENABLED=false)");
+  }
+  if (!cfg.allowedChainIds.has(req.chainId)) {
+    throw new Error(`ChainId not allowed: ${req.chainId}`);
+  }
+
+  // (3) Now load account
+  const account = getAccountFromEnv();
+
+  // (4) Build intent for guard
+  const intent: TxIntent = {
+    chainId: req.chainId,
+    from: account.address as `0x${string}`,
+    to: req.to as `0x${string}`,
+    valueWei: req.valueWei,
+    dataHex: (req.dataHex ?? "0x") as `0x${string}`,
+  };
+
+  // (5) Guard must run BEFORE signing/sending (dry-run: no ledger commit)
+  await walletPreflightCheck(cfg, intent, {
+    commitLedger: false,
+    simulate: async (tx) => {
+      if (!tx.to) return { ok: false, reason: "Simulation missing 'to' address" };
+      if (!isAddress(tx.to as any)) return { ok: false, reason: "Simulation got invalid 'to' address" };
+
+      return simulateTx(
+        {
+          chainId: tx.chainId,
+          to: tx.to as Address,
+          valueWei: tx.valueWei ?? 0n,
+          dataHex: (tx.dataHex ?? "0x") as Hex,
+        },
+        account.address
+      );
+    },
+  });
+
+  return { intent };
+}
 /**
  * Send transaction (guarded).
  * - Enforces WALLET_AUTONOMY_ENABLED, chain allowlist, caps, approval blocking
@@ -174,6 +226,6 @@ export async function sendTx(req: SendTxRequest): Promise<{ hash: Hex }> {
 /**
  * Convenience: native send only (no calldata).
  */
-export async function sendNative(to: Address, valueWei: bigint, chainId = 8453) {
+export async function sendNative(to: Address, valueWei: bigint, chainId = 84532) {
   return sendTx({ chainId, to, valueWei, dataHex: "0x" });
 }

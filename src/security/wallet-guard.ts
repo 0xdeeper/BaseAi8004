@@ -291,6 +291,7 @@ export function loadWalletGuardConfigFromEnv(opts?: { projectRoot?: string }): W
 
 export type PreflightOptions = {
   simulate?: (tx: TxIntent) => Promise<SimulationResult>;
+  commitLedger?: boolean; // default true; set false for prepare/preview
 };
 
 // -------------------------
@@ -301,6 +302,8 @@ export async function walletPreflightCheck(
   tx: TxIntent,
   opts?: PreflightOptions
 ): Promise<void> {
+
+  const commitLedger = opts?.commitLedger !== false;
   // Kill switch
   if (!cfg.autonomyEnabled) {
     throw new Error("Wallet autonomy disabled (WALLET_AUTONOMY_ENABLED=false)");
@@ -418,6 +421,8 @@ export async function walletPreflightCheck(
     tokenSpent[usdcAddr] = next.toString();
   }
 
-  // Commit ledger (fail-closed)
-  writeLedger(cfg.ledgerFilePath, { dayKey: today, spentWei: nextSpentWei.toString(), tokenSpent });
-}
+   // Commit ledger only when requested (send path).
+  // Prepare/preview must NOT consume caps.
+  if (commitLedger) {
+    writeLedger(cfg.ledgerFilePath, { dayKey: today, spentWei: nextSpentWei.toString(), tokenSpent });}
+  }

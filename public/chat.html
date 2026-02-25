@@ -7,10 +7,23 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; max-width: 900px; }
     #output { width: 100%; height: 420px; }
-    #row { display: flex; gap: 10px; margin-top: 10px; }
+    #row { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
     #input { flex: 1; padding: 10px; }
     #sendBtn { padding: 10px 14px; }
     .hint { color: #666; font-size: 12px; margin-top: 8px; }
+
+    .panel { margin-top: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
+    .panelRow { display: flex; gap: 10px; margin-top: 8px; }
+    .col { flex: 1; }
+    label { display: block; font-size: 12px; color: #444; margin-bottom: 4px; }
+    select, input[type="text"], textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+    }
+    #toolArgs { height: 90px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .hidden { display: none; }
+    code { background: #f6f6f6; padding: 1px 4px; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -19,13 +32,38 @@
 
 <textarea id="output" readonly></textarea>
 
-<div id="row">
-  <input id="input" type="text" placeholder="Type a message… (Enter to send)">
-  <button id="sendBtn">Send</button>
+<div class="panel">
+  <div class="panelRow">
+    <div class="col" style="max-width: 220px;">
+      <label for="mode">Mode</label>
+      <select id="mode">
+        <option value="chat" selected>Chat</option>
+        <option value="tool">Tool call</option>
+      </select>
+    </div>
+    <div class="col">
+      <div class="hint">
+        Endpoint: <code>POST /a2a</code> · CSP blocks inline scripts, JS is loaded from <code>/chat.js</code>.
+      </div>
+    </div>
+  </div>
+
+  <div id="toolPanel" class="panelRow hidden">
+    <div class="col" style="max-width: 340px;">
+      <label for="toolName">Tool name</label>
+      <input id="toolName" type="text" placeholder='e.g. wallet_get_native_balance' />
+    </div>
+    <div class="col">
+      <label for="toolArgs">Tool arguments (JSON)</label>
+      <textarea id="toolArgs" placeholder="{}"></textarea>
+      <div class="hint">Tip: Ctrl+Enter to send tool call.</div>
+    </div>
+  </div>
 </div>
 
-<div class="hint">
-  Endpoint: <code>POST /a2a</code> · CSP blocks inline scripts, so JS is loaded from <code>/chat.js</code>.
+<div id="row">
+  <input id="input" type="text" placeholder="Type a message… (Enter to send)">
+  <button id="sendBtn" type="button">Send</button>
 </div>
 
 <script src="/chat.js"></script>

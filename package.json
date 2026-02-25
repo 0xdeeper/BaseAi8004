@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "npx tsc",
-    "dev": "npx tsc -w",
+    "dev": "tsx src/a2a-server.ts",
     "start": "node server/a2a-server.js",
     "start:build": "npm run build && npm run start",
     "typecheck": "npx tsc --noEmit"
@@ -31,6 +31,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.3.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }
