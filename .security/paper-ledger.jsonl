@@ -1,2 +1,0 @@
-{"ts":"2026-02-26T23:38:09.933Z","kind":"FILL","planId":"plan-test-1","actionId":"action-test-1","fromAsset":"USDC","toAsset":"ETH","amountIn":"1","amountOut":"VIRTUAL","priceUsd":3000,"note":"paper fill using snapshot pricing"}
-{"ts":"2026-02-26T23:46:27.169Z","kind":"FILL","planId":"8cb9d916-ca2b-41b2-ae18-85136b1c51a7","actionId":"5533c2aa-6369-4777-a036-edca50d51279","fromAsset":"USDC","toAsset":"ETH","amountIn":"1","amountOut":"VIRTUAL","priceUsd":3000,"note":"paper fill using snapshot pricing"}
