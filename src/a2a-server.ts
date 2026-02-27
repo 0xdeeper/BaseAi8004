@@ -4,12 +4,14 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { setDefaultResultOrder } from "node:dns";
-
+import { decide } from "./engine/decisionEngine.js";
+import type { DecideInput } from "./engine/types.js";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 
 import { handleA2A } from "./a2a-handler.js";
+import { paperExecutePlan } from "./paper/paper-executor.js";
 
 // Prefer IPv4 first (Windows can be weird with localhost resolution)
 setDefaultResultOrder("ipv4first");
@@ -123,6 +125,23 @@ const a2aLimiter = rateLimit({
 
 app.use(globalLimiter);
 app.use("/a2a", a2aLimiter);
+const engineLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/engine", engineLimiter);
+
+const paperLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use("/paper", paperLimiter);
 
 // ---------------------------------------------------------------------------
 // Optional allowlist gate
@@ -159,6 +178,51 @@ app.get("/.well-known/agent-card.json", (_req: Request, res: Response) => {
 });
 app.get("/chat", (_req, res) => {
   res.sendFile(path.join(__dirname, "../public/chat.html"));
+});
+
+app.post("/paper/execute-plan", (req: Request, res: Response) => {
+  try {
+    // Governance: keep paper endpoints disabled in PUBLIC_MODE
+    if (PUBLIC_MODE) return res.status(403).json({ error: "Disabled in PUBLIC_MODE" });
+
+    const body = req.body as any;
+    const plan = body?.plan;
+    const pricesUsd = body?.pricesUsd;
+
+    if (!plan || !pricesUsd) {
+      return res.status(400).json({ error: "Missing plan or pricesUsd" });
+    }
+
+    const report = paperExecutePlan(plan, pricesUsd);
+    return res.status(200).json(report);
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message ?? "paper exec error" });
+  }
+});
+
+
+// ---------------------------------------------------------------------------
+// Decision Engine (Phase B) - READ ONLY
+// This endpoint returns intents + policy decisions + execution plans.
+// It does NOT execute wallet transactions.
+// ---------------------------------------------------------------------------
+app.post("/engine/decide", (req: Request, res: Response) => {
+  try {
+    const body = req.body as Partial<DecideInput>;
+
+    // Minimal validation (fail closed)
+    if (!body?.snapshot || !body?.portfolio) {
+      return res.status(400).json({ error: "Missing snapshot or portfolio" });
+    }
+    if (body.snapshot.chain !== "base" || body.portfolio.chain !== "base") {
+      return res.status(400).json({ error: "Only base chain supported" });
+    }
+
+    const out = decide(body as DecideInput);
+    return res.status(200).json(out);
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message ?? "Engine error" });
+  }
 });
 
 // IMPORTANT: lightweight URL blocking BEFORE handler (only for string messages)

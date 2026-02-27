@@ -1,5 +1,7 @@
 {
   "dayKey": "2026-02-26",
   "spentWei": "1",
-  "tokenSpent": {}
+  "tokenSpent": {
+    "0x036cbd53842c5426634e7929541ec2318f3dcf7e": "1000000"
+  }
 }
