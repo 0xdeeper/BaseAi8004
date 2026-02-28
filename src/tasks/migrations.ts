@@ -1,5 +1,10 @@
 import { getTasksDb } from "./db.js";
 
+function hasColumn(db: any, table: string, col: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((r) => r.name === col);
+}
+
 export function migrateTasksDb(): void {
   const db = getTasksDb();
 
@@ -31,4 +36,10 @@ export function migrateTasksDb(): void {
     CREATE INDEX IF NOT EXISTS idx_locks_until
       ON task_locks(lock_until_ms);
   `);
+
+  // ---- Migration: add task_key for idempotent scheduling ----
+  if (!hasColumn(db, "tasks", "task_key")) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN task_key TEXT;`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_task_key ON tasks(task_key);`);
+  }
 }

@@ -14,7 +14,11 @@ export function computeBackoffMs(attemptsAfterFailure: number): number {
   return Math.min(raw, 5 * 60_000);
 }
 
-export function enqueueTask(params: EnqueueParams): string {
+/**
+ * Enqueue a task.
+ * If taskKey is provided, it is idempotent (INSERT OR IGNORE) and returns null on duplicate.
+ */
+export function enqueueTask(params: EnqueueParams): string | null {
   const db = getTasksDb();
   const id = randomUUID();
   const created = nowMs();
@@ -22,17 +26,19 @@ export function enqueueTask(params: EnqueueParams): string {
   const priority = params.priority ?? 0;
   const maxAttempts = params.maxAttempts ?? 5;
 
+  const taskKey = params.taskKey ?? null;
+
   const stmt = db.prepare(`
-    INSERT INTO tasks (
+    INSERT OR IGNORE INTO tasks (
       id, type, payload_json, state, priority, attempts, max_attempts,
-      run_after_ms, created_at_ms, updated_at_ms, last_error
+      run_after_ms, created_at_ms, updated_at_ms, last_error, task_key
     ) VALUES (
       @id, @type, @payload_json, @state, @priority, @attempts, @max_attempts,
-      @run_after_ms, @created_at_ms, @updated_at_ms, @last_error
+      @run_after_ms, @created_at_ms, @updated_at_ms, @last_error, @task_key
     )
   `);
 
-  stmt.run({
+  const info = stmt.run({
     id,
     type: params.type,
     payload_json: JSON.stringify(params.payload ?? null),
@@ -44,8 +50,10 @@ export function enqueueTask(params: EnqueueParams): string {
     created_at_ms: created,
     updated_at_ms: created,
     last_error: null,
+    task_key: taskKey,
   });
 
+  if (info.changes === 0) return null; // duplicate task_key
   return id;
 }
 
@@ -61,11 +69,7 @@ function parseState(s: string): TaskState {
 
 /**
  * Atomically claim the next runnable task.
- *
- * Safety properties:
- * - Uses BEGIN IMMEDIATE so only one writer claims at a time across processes.
- * - Deletes expired locks inside the same transaction.
- * - Selects only QUEUED tasks whose locks are absent.
+ * Uses BEGIN IMMEDIATE to avoid cross-process claim races.
  */
 export function claimNextTask(opts: {
   workerId: string;
@@ -74,13 +78,10 @@ export function claimNextTask(opts: {
 }): ClaimedTask | null {
   const db = getTasksDb();
 
-  // BEGIN IMMEDIATE = acquire RESERVED lock early (prevents claim races)
   db.exec("BEGIN IMMEDIATE");
   try {
-    // Clear expired locks
     db.prepare(`DELETE FROM task_locks WHERE lock_until_ms <= ?`).run(opts.nowMs);
 
-    // Pick highest priority runnable task (priority desc, then oldest run_after)
     const picked = db
       .prepare(
         `
@@ -103,7 +104,6 @@ export function claimNextTask(opts: {
 
     const lockUntil = opts.nowMs + opts.lockTtlMs;
 
-    // Insert lock
     db.prepare(
       `
       INSERT INTO task_locks (task_id, locked_by, lock_until_ms)
@@ -111,7 +111,6 @@ export function claimNextTask(opts: {
     `
     ).run(picked.id, opts.workerId, lockUntil);
 
-    // Mark RUNNING + increment attempts
     db.prepare(
       `
       UPDATE tasks
@@ -131,9 +130,7 @@ export function claimNextTask(opts: {
   } catch (e) {
     try {
       db.exec("ROLLBACK");
-    } catch {
-      // ignore rollback errors
-    }
+    } catch {}
     throw e;
   }
 }
@@ -173,8 +170,8 @@ export function failTask(opts: {
   db.exec("BEGIN IMMEDIATE");
   try {
     const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(opts.taskId) as TaskRecord | undefined;
+
     if (!row) {
-      // If task vanished, release lock and move on
       db.prepare(`DELETE FROM task_locks WHERE task_id = ? AND locked_by = ?`).run(opts.taskId, opts.workerId);
       db.exec("COMMIT");
       return { final: true };
@@ -192,8 +189,7 @@ export function failTask(opts: {
       state = "FAILED_FINAL";
     } else {
       state = "FAILED_RETRYABLE";
-      const backoff = computeBackoffMs(attempts);
-      nextRunAfterMs = opts.nowMs + backoff;
+      nextRunAfterMs = opts.nowMs + computeBackoffMs(attempts);
     }
 
     db.prepare(
@@ -207,10 +203,8 @@ export function failTask(opts: {
     `
     ).run(state, nextRunAfterMs ?? null, opts.nowMs, opts.error, opts.taskId);
 
-    // Always release lock on failure path
     db.prepare(`DELETE FROM task_locks WHERE task_id = ? AND locked_by = ?`).run(opts.taskId, opts.workerId);
 
-    // If retryable, move it back to QUEUED with updated run_after
     if (state === "FAILED_RETRYABLE") {
       db.prepare(
         `

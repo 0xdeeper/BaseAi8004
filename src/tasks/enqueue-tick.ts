@@ -4,7 +4,13 @@ import { appendTaskEvent } from "./audit.js";
 
 migrateTasksDb();
 
+// Manual enqueue should NOT use a taskKey (we want a fresh task every time)
 const id = enqueueTask({ type: "STRATEGY_TICK", payload: {} });
+
+if (!id) {
+  console.log("[enqueue] duplicate ignored (unexpected for manual enqueue)");
+  process.exit(0);
+}
 
 appendTaskEvent({
   type: "TASK_ENQUEUED",

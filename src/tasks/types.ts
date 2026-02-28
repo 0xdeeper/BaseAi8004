@@ -39,3 +39,12 @@ export interface EnqueueParams {
   priority?: number;
   maxAttempts?: number;
 }
+
+export interface EnqueueParams {
+  type: string;
+  payload: unknown;
+  runAfterMs?: number;
+  priority?: number;
+  maxAttempts?: number;
+  taskKey?: string; // NEW: idempotency key
+}
