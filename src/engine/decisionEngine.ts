@@ -9,7 +9,7 @@ import crypto from "node:crypto";
  * - Returns Intents only.
  * - Never produces transactions.
  */
-function strategyStub(input: DecideInput): Intent[] {
+export function strategyStub(input: DecideInput): Intent[] {
   const usdcBal = input.portfolio.balances["USDC"] ?? "0";
 
   // simple string-to-number parse for skeleton only
@@ -67,3 +67,4 @@ export function decide(input: DecideInput): DecideOutput {
     executionPlans,
   };
 }
+

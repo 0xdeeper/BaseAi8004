@@ -1,4 +1,4 @@
-/**
+ /**
  * Trading Decision Engine types (safe-by-default).
  * IMPORTANT:
  * - Strategy produces Intent only (no tx, no calldata).
